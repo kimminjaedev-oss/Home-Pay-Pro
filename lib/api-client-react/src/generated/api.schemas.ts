@@ -63,6 +63,8 @@ export interface Household {
   email: string;
   unpaidBalance: number;
   /** @nullable */
+  overdueSince?: string | null;
+  /** @nullable */
   userId?: number | null;
   createdAt: string;
 }
@@ -74,6 +76,11 @@ export interface HouseholdDetail {
   email: string;
   unpaidBalance: number;
   monthlyFee: number;
+  lateFee: number;
+  monthsOverdue: number;
+  interestRate: number;
+  /** @nullable */
+  overdueSince?: string | null;
   totalDue: number;
   /** @nullable */
   userId?: number | null;
@@ -94,6 +101,8 @@ export interface ImportHouseholdRow {
   ownerName: string;
   email: string;
   unpaidBalance: number;
+  /** @nullable */
+  overdueSince?: string | null;
 }
 
 export interface ImportInput {
@@ -172,21 +181,7 @@ limit?: number;
 };
 
 export type GetAllPaymentsParams = {
-/**
- * @nullable
- */
-userId?: number | null;
-status?: GetAllPaymentsStatus;
 page?: number;
 limit?: number;
 };
-
-export type GetAllPaymentsStatus = typeof GetAllPaymentsStatus[keyof typeof GetAllPaymentsStatus];
-
-
-export const GetAllPaymentsStatus = {
-  pending: 'pending',
-  completed: 'completed',
-  failed: 'failed',
-} as const;
 

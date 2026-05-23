@@ -13,6 +13,11 @@ export interface HouseholdDetail {
   email: string;
   unpaidBalance: number;
   monthlyFee: number;
+  lateFee: number;
+  monthsOverdue: number;
+  interestRate: number;
+  /** @nullable */
+  overdueSince?: Date | null;
   totalDue: number;
   /** @nullable */
   userId?: number | null;

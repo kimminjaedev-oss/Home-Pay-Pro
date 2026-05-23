@@ -1129,7 +1129,7 @@ export const getStripeWebhookUrl = () => {
 }
 
 /**
- * @summary Stripe webhook handler
+ * @summary Stripe webhook endpoint
  */
 export const stripeWebhook = async ( options?: RequestInit): Promise<MessageResponse> => {
 
@@ -1177,7 +1177,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type StripeWebhookMutationError = ErrorType<unknown>
 
     /**
- * @summary Stripe webhook handler
+ * @summary Stripe webhook endpoint
  */
 export const useStripeWebhook = <TError = ErrorType<unknown>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof stripeWebhook>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}

@@ -301,15 +301,6 @@ paths:
       tags: [payments]
       summary: Get all payments (admin only)
       parameters:
-        - name: userId
-          in: query
-          schema:
-            type: ["integer", "null"]
-        - name: status
-          in: query
-          schema:
-            type: string
-            enum: [pending, completed, failed]
         - name: page
           in: query
           schema:
@@ -319,7 +310,7 @@ paths:
           in: query
           schema:
             type: integer
-            default: 20
+            default: 50
       responses:
         "200":
           description: All payments
@@ -332,10 +323,10 @@ paths:
     post:
       operationId: stripeWebhook
       tags: [payments]
-      summary: Stripe webhook handler
+      summary: Stripe webhook endpoint
       responses:
         "200":
-          description: Webhook processed
+          description: Webhook received
           content:
             application/json:
               schema:
@@ -440,6 +431,9 @@ components:
           type: string
         unpaidBalance:
           type: number
+        overdueSince:
+          type: ["string", "null"]
+          format: date-time
         userId:
           type: ["integer", "null"]
         createdAt:
@@ -448,7 +442,7 @@ components:
 
     HouseholdDetail:
       type: object
-      required: [id, unitNumber, ownerName, email, unpaidBalance, monthlyFee, totalDue, createdAt]
+      required: [id, unitNumber, ownerName, email, unpaidBalance, monthlyFee, lateFee, monthsOverdue, interestRate, totalDue, createdAt]
       properties:
         id:
           type: integer
@@ -462,6 +456,15 @@ components:
           type: number
         monthlyFee:
           type: number
+        lateFee:
+          type: number
+        monthsOverdue:
+          type: integer
+        interestRate:
+          type: number
+        overdueSince:
+          type: ["string", "null"]
+          format: date-time
         totalDue:
           type: number
         userId:
@@ -500,6 +503,9 @@ components:
           type: string
         unpaidBalance:
           type: number
+        overdueSince:
+          type: ["string", "null"]
+          format: date-time
 
     ImportInput:
       type: object

@@ -12,7 +12,6 @@ export * from './checkoutInput';
 export * from './checkoutResponse';
 export * from './errorResponse';
 export * from './getAllPaymentsParams';
-export * from './getAllPaymentsStatus';
 export * from './getPaymentHistoryParams';
 export * from './healthStatus';
 export * from './household';

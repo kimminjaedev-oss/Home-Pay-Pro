@@ -13,6 +13,8 @@ export interface Household {
   email: string;
   unpaidBalance: number;
   /** @nullable */
+  overdueSince?: Date | null;
+  /** @nullable */
   userId?: number | null;
   createdAt: Date;
 }

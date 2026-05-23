@@ -11,6 +11,20 @@ import {
 import { requireAuth, requireAdmin, type AuthenticatedRequest } from "../middlewares/requireAuth";
 
 const MONTHLY_FEE = 36;
+const MONTHLY_INTEREST_RATE = 0.015; // 1.5% per month on overdue balance
+
+function calcLateFee(
+  unpaidBalance: number,
+  overdueSince: Date | null | undefined,
+): { lateFee: number; monthsOverdue: number } {
+  if (!overdueSince || unpaidBalance <= 0) {
+    return { lateFee: 0, monthsOverdue: 0 };
+  }
+  const msPerMonth = 1000 * 60 * 60 * 24 * 30.44;
+  const monthsOverdue = Math.max(0, Math.floor((Date.now() - overdueSince.getTime()) / msPerMonth));
+  const lateFee = Math.round(unpaidBalance * MONTHLY_INTEREST_RATE * monthsOverdue * 100) / 100;
+  return { lateFee, monthsOverdue };
+}
 
 const router = Router();
 
@@ -25,6 +39,7 @@ router.get("/households/my", requireAuth, async (req: AuthenticatedRequest, res)
 
   if (!household) {
     const unpaidBalance = parseFloat(user.unpaidBalance);
+    const { lateFee, monthsOverdue } = calcLateFee(unpaidBalance, null);
     res.json(
       GetMyHouseholdResponse.parse({
         id: 0,
@@ -33,7 +48,11 @@ router.get("/households/my", requireAuth, async (req: AuthenticatedRequest, res)
         email: user.email,
         unpaidBalance,
         monthlyFee: MONTHLY_FEE,
-        totalDue: unpaidBalance + MONTHLY_FEE,
+        lateFee,
+        monthsOverdue,
+        interestRate: MONTHLY_INTEREST_RATE,
+        overdueSince: null,
+        totalDue: unpaidBalance + lateFee + MONTHLY_FEE,
         userId: user.id,
         userName: user.name,
         createdAt: new Date().toISOString(),
@@ -43,6 +62,7 @@ router.get("/households/my", requireAuth, async (req: AuthenticatedRequest, res)
   }
 
   const unpaidBalance = parseFloat(household.unpaidBalance);
+  const { lateFee, monthsOverdue } = calcLateFee(unpaidBalance, household.overdueSince);
   res.json(
     GetMyHouseholdResponse.parse({
       id: household.id,
@@ -51,7 +71,11 @@ router.get("/households/my", requireAuth, async (req: AuthenticatedRequest, res)
       email: household.email,
       unpaidBalance,
       monthlyFee: MONTHLY_FEE,
-      totalDue: unpaidBalance + MONTHLY_FEE,
+      lateFee,
+      monthsOverdue,
+      interestRate: MONTHLY_INTEREST_RATE,
+      overdueSince: household.overdueSince?.toISOString() ?? null,
+      totalDue: unpaidBalance + lateFee + MONTHLY_FEE,
       userId: household.userId,
       userName: user.name,
       createdAt: household.createdAt,
@@ -105,6 +129,7 @@ router.get("/households", requireAdmin, async (req: AuthenticatedRequest, res): 
         ownerName: h.ownerName,
         email: h.email,
         unpaidBalance: parseFloat(h.unpaidBalance),
+        overdueSince: h.overdueSince?.toISOString() ?? null,
         userId: h.userId,
         createdAt: h.createdAt,
       })),
@@ -144,6 +169,7 @@ router.get("/households/:id", requireAdmin, async (req: AuthenticatedRequest, re
   }
 
   const unpaidBalance = parseFloat(household.unpaidBalance);
+  const { lateFee, monthsOverdue } = calcLateFee(unpaidBalance, household.overdueSince);
   res.json(
     GetHouseholdResponse.parse({
       id: household.id,
@@ -152,7 +178,11 @@ router.get("/households/:id", requireAdmin, async (req: AuthenticatedRequest, re
       email: household.email,
       unpaidBalance,
       monthlyFee: MONTHLY_FEE,
-      totalDue: unpaidBalance + MONTHLY_FEE,
+      lateFee,
+      monthsOverdue,
+      interestRate: MONTHLY_INTEREST_RATE,
+      overdueSince: household.overdueSince?.toISOString() ?? null,
+      totalDue: unpaidBalance + lateFee + MONTHLY_FEE,
       userId: household.userId,
       userName,
       createdAt: household.createdAt,

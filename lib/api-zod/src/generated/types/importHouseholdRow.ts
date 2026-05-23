@@ -11,4 +11,6 @@ export interface ImportHouseholdRow {
   ownerName: string;
   email: string;
   unpaidBalance: number;
+  /** @nullable */
+  overdueSince?: Date | null;
 }

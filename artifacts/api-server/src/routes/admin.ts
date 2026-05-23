@@ -25,6 +25,15 @@ router.post("/admin/import", requireAdmin, async (req: AuthenticatedRequest, res
 
   for (const row of rows) {
     try {
+      // Parse overdueSince from the row if provided
+      let overdueSinceDate: Date | null = null;
+      if (row.overdueSince) {
+        const parsed = new Date(row.overdueSince);
+        if (!isNaN(parsed.getTime())) {
+          overdueSinceDate = parsed;
+        }
+      }
+
       const [existing] = await db
         .select()
         .from(householdsTable)
@@ -32,12 +41,26 @@ router.post("/admin/import", requireAdmin, async (req: AuthenticatedRequest, res
         .limit(1);
 
       if (existing) {
+        // Determine overdueSince: use provided value, preserve existing, or auto-set if balance > 0
+        let newOverdueSince: Date | null = existing.overdueSince ?? null;
+        if (overdueSinceDate !== null) {
+          // Explicit date from Excel — always use it
+          newOverdueSince = overdueSinceDate;
+        } else if (row.unpaidBalance > 0 && !existing.overdueSince) {
+          // New overdue balance with no prior date — start tracking from now
+          newOverdueSince = new Date();
+        } else if (row.unpaidBalance <= 0) {
+          // Balance cleared — reset overdue tracking
+          newOverdueSince = null;
+        }
+
         await db
           .update(householdsTable)
           .set({
             ownerName: row.ownerName,
             email: row.email,
             unpaidBalance: String(row.unpaidBalance),
+            overdueSince: newOverdueSince,
           })
           .where(eq(householdsTable.id, existing.id));
 
@@ -49,7 +72,6 @@ router.post("/admin/import", requireAdmin, async (req: AuthenticatedRequest, res
             .set({ unpaidBalance: String(row.unpaidBalance) })
             .where(eq(usersTable.id, userIdToUpdate));
         } else {
-          // Try to find user by email and link them
           const [matchedUser] = await db
             .select()
             .from(usersTable)
@@ -68,14 +90,20 @@ router.post("/admin/import", requireAdmin, async (req: AuthenticatedRequest, res
         }
         updated++;
       } else {
-        const [newHousehold] = await db.insert(householdsTable).values({
-          unitNumber: row.unitNumber,
-          ownerName: row.ownerName,
-          email: row.email,
-          unpaidBalance: String(row.unpaidBalance),
-        }).returning();
+        // New household — auto-set overdueSince if balance > 0 and no explicit date
+        const newOverdueSince = overdueSinceDate ?? (row.unpaidBalance > 0 ? new Date() : null);
 
-        // Try to find an existing user with this email and link them
+        const [newHousehold] = await db
+          .insert(householdsTable)
+          .values({
+            unitNumber: row.unitNumber,
+            ownerName: row.ownerName,
+            email: row.email,
+            unpaidBalance: String(row.unpaidBalance),
+            overdueSince: newOverdueSince,
+          })
+          .returning();
+
         const [matchedUser] = await db
           .select()
           .from(usersTable)

@@ -5,14 +5,8 @@
  * Property Management Payment Platform API
  * OpenAPI spec version: 0.1.0
  */
-import type { GetAllPaymentsStatus } from './getAllPaymentsStatus';
 
 export type GetAllPaymentsParams = {
-/**
- * @nullable
- */
-userId?: number | null;
-status?: GetAllPaymentsStatus;
 page?: number;
 limit?: number;
 };

@@ -8,6 +8,7 @@ export const householdsTable = pgTable("households", {
   ownerName: text("owner_name").notNull(),
   email: text("email").notNull(),
   unpaidBalance: numeric("unpaid_balance", { precision: 10, scale: 2 }).notNull().default("0"),
+  overdueSince: timestamp("overdue_since", { withTimezone: true }),
   userId: integer("user_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),

@@ -97,6 +97,7 @@ export const ListHouseholdsResponse = zod.object({
   "ownerName": zod.string(),
   "email": zod.string(),
   "unpaidBalance": zod.number(),
+  "overdueSince": zod.coerce.date().nullish(),
   "userId": zod.number().nullish(),
   "createdAt": zod.coerce.date()
 })),
@@ -116,6 +117,10 @@ export const GetMyHouseholdResponse = zod.object({
   "email": zod.string(),
   "unpaidBalance": zod.number(),
   "monthlyFee": zod.number(),
+  "lateFee": zod.number(),
+  "monthsOverdue": zod.number(),
+  "interestRate": zod.number(),
+  "overdueSince": zod.coerce.date().nullish(),
   "totalDue": zod.number(),
   "userId": zod.number().nullish(),
   "userName": zod.string().nullish(),
@@ -137,6 +142,10 @@ export const GetHouseholdResponse = zod.object({
   "email": zod.string(),
   "unpaidBalance": zod.number(),
   "monthlyFee": zod.number(),
+  "lateFee": zod.number(),
+  "monthsOverdue": zod.number(),
+  "interestRate": zod.number(),
+  "overdueSince": zod.coerce.date().nullish(),
   "totalDue": zod.number(),
   "userId": zod.number().nullish(),
   "userName": zod.string().nullish(),
@@ -152,7 +161,8 @@ export const ImportHouseholdsBody = zod.object({
   "unitNumber": zod.string(),
   "ownerName": zod.string(),
   "email": zod.string(),
-  "unpaidBalance": zod.number()
+  "unpaidBalance": zod.number(),
+  "overdueSince": zod.coerce.date().nullish()
 }))
 })
 
@@ -237,11 +247,9 @@ export const GetPaymentHistoryResponse = zod.object({
  * @summary Get all payments (admin only)
  */
 export const getAllPaymentsQueryPageDefault = 1;
-export const getAllPaymentsQueryLimitDefault = 20;
+export const getAllPaymentsQueryLimitDefault = 50;
 
 export const GetAllPaymentsQueryParams = zod.object({
-  "userId": zod.coerce.number().nullish(),
-  "status": zod.enum(['pending', 'completed', 'failed']).optional(),
   "page": zod.coerce.number().default(getAllPaymentsQueryPageDefault),
   "limit": zod.coerce.number().default(getAllPaymentsQueryLimitDefault)
 })
@@ -265,7 +273,7 @@ export const GetAllPaymentsResponse = zod.object({
 
 
 /**
- * @summary Stripe webhook handler
+ * @summary Stripe webhook endpoint
  */
 export const StripeWebhookResponse = zod.object({
   "message": zod.string()

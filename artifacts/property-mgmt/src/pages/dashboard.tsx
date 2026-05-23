@@ -1,14 +1,14 @@
 import React, { useState } from "react";
 import { AppLayout } from "@/components/layout";
 import { useGetMyHousehold, useCreateCheckout, useGetPaymentHistory } from "@workspace/api-client-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
-import { CreditCard, DollarSign, History, AlertCircle } from "lucide-react";
+import { CreditCard, DollarSign, History, AlertCircle, TrendingUp } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 export default function DashboardPage() {
@@ -21,7 +21,7 @@ export default function DashboardPage() {
 
   const handleSetDefaultAmount = () => {
     if (household) {
-      setPaymentAmount(household.totalDue.toString());
+      setPaymentAmount(household.totalDue.toFixed(2));
     }
   };
 
@@ -83,6 +83,7 @@ export default function DashboardPage() {
   }
 
   const hasBalance = household.totalDue > 0;
+  const isOverdue = household.monthsOverdue > 0 && household.lateFee > 0;
 
   return (
     <AppLayout>
@@ -92,7 +93,22 @@ export default function DashboardPage() {
           <p className="text-slate-500">Unit {household.unitNumber} Dashboard</p>
         </div>
 
-        <div className="grid md:grid-cols-[1fr_400px] gap-6">
+        {/* Overdue Warning Banner */}
+        {isOverdue && (
+          <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl px-5 py-4">
+            <AlertCircle className="h-5 w-5 text-red-500 mt-0.5 flex-shrink-0" />
+            <div>
+              <p className="font-semibold text-red-800 text-sm">Overdue Balance</p>
+              <p className="text-red-600 text-sm mt-0.5">
+                Your account has been overdue for <strong>{household.monthsOverdue} month{household.monthsOverdue !== 1 ? "s" : ""}</strong> since{" "}
+                {household.overdueSince ? format(new Date(household.overdueSince), "MMMM d, yyyy") : "a prior date"}.
+                A late fee of <strong>${household.lateFee.toFixed(2)}</strong> has been applied at {(household.interestRate * 100).toFixed(1)}%/month.
+              </p>
+            </div>
+          </div>
+        )}
+
+        <div className="grid md:grid-cols-[1fr_380px] gap-6">
           {/* Main Balance Card */}
           <Card className="shadow-sm border-slate-200">
             <CardHeader className="pb-4">
@@ -101,23 +117,38 @@ export default function DashboardPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-6 mb-8">
+              {/* Total Due */}
+              <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6">
                 <div>
                   <div className="text-sm font-medium text-slate-500 mb-1">Total Due</div>
-                  <div className="text-4xl font-bold tracking-tight text-slate-900">${household.totalDue.toFixed(2)}</div>
-                </div>
-                <div className="flex gap-4 text-sm">
-                  <div className="bg-slate-50 px-4 py-2 rounded-lg border border-slate-100">
-                    <div className="text-slate-500 mb-1">Prior Unpaid</div>
-                    <div className="font-medium text-slate-900">${household.unpaidBalance.toFixed(2)}</div>
-                  </div>
-                  <div className="bg-slate-50 px-4 py-2 rounded-lg border border-slate-100">
-                    <div className="text-slate-500 mb-1">Monthly Fee</div>
-                    <div className="font-medium text-slate-900">${household.monthlyFee.toFixed(2)}</div>
+                  <div className={`text-4xl font-bold tracking-tight ${isOverdue ? "text-red-600" : "text-slate-900"}`}>
+                    ${household.totalDue.toFixed(2)}
                   </div>
                 </div>
               </div>
 
+              {/* Balance Breakdown */}
+              <div className="grid grid-cols-3 gap-3 mb-6">
+                <div className="bg-slate-50 px-4 py-3 rounded-lg border border-slate-100">
+                  <div className="text-xs text-slate-500 mb-1">Unpaid Principal</div>
+                  <div className="font-semibold text-slate-900">${household.unpaidBalance.toFixed(2)}</div>
+                </div>
+                <div className={`px-4 py-3 rounded-lg border ${isOverdue ? "bg-red-50 border-red-100" : "bg-slate-50 border-slate-100"}`}>
+                  <div className={`text-xs mb-1 flex items-center gap-1 ${isOverdue ? "text-red-500" : "text-slate-500"}`}>
+                    {isOverdue && <TrendingUp className="h-3 w-3" />}
+                    Late Fee {isOverdue ? `(${household.monthsOverdue}mo)` : ""}
+                  </div>
+                  <div className={`font-semibold ${isOverdue ? "text-red-700" : "text-slate-400"}`}>
+                    ${household.lateFee.toFixed(2)}
+                  </div>
+                </div>
+                <div className="bg-slate-50 px-4 py-3 rounded-lg border border-slate-100">
+                  <div className="text-xs text-slate-500 mb-1">Monthly Fee</div>
+                  <div className="font-semibold text-slate-900">${household.monthlyFee.toFixed(2)}</div>
+                </div>
+              </div>
+
+              {/* Payment Form */}
               <div className="bg-slate-50 p-5 rounded-xl border border-slate-200">
                 <h4 className="text-sm font-medium text-slate-900 mb-3">Make a Payment</h4>
                 <div className="flex flex-col sm:flex-row gap-3">
@@ -147,7 +178,7 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
 
-          {/* Quick Info Card */}
+          {/* Household Details Card */}
           <Card className="shadow-sm border-slate-200 bg-primary/5 border-primary/10">
             <CardHeader>
               <CardTitle className="text-lg font-semibold text-primary/90">Household Details</CardTitle>
@@ -165,17 +196,36 @@ export default function DashboardPage() {
                 <span className="text-slate-500">Email</span>
                 <span className="font-medium text-slate-900 truncate max-w-[180px]">{household.email}</span>
               </div>
+              {household.overdueSince && (
+                <div className="flex justify-between pb-2 border-b border-primary/10">
+                  <span className="text-slate-500">Overdue Since</span>
+                  <span className="font-medium text-red-600">{format(new Date(household.overdueSince), "MMM d, yyyy")}</span>
+                </div>
+              )}
+              {isOverdue && (
+                <div className="flex justify-between pb-2 border-b border-primary/10">
+                  <span className="text-slate-500">Interest Rate</span>
+                  <span className="font-medium text-slate-900">{(household.interestRate * 100).toFixed(1)}% / month</span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-slate-500">Status</span>
-                <Badge variant={hasBalance ? "destructive" : "secondary"} className={!hasBalance ? "bg-green-100 text-green-800 hover:bg-green-100" : ""}>
-                  {hasBalance ? "Balance Due" : "Up to Date"}
+                <Badge
+                  variant={isOverdue ? "destructive" : hasBalance ? "outline" : "secondary"}
+                  className={
+                    isOverdue ? "" :
+                    hasBalance ? "border-yellow-300 text-yellow-800 bg-yellow-50" :
+                    "bg-green-100 text-green-800 hover:bg-green-100"
+                  }
+                >
+                  {isOverdue ? "Overdue" : hasBalance ? "Balance Due" : "Up to Date"}
                 </Badge>
               </div>
             </CardContent>
           </Card>
         </div>
 
-        {/* History Table */}
+        {/* Payment History */}
         <Card className="shadow-sm border-slate-200">
           <CardHeader>
             <CardTitle className="text-lg font-semibold text-slate-800 flex items-center gap-2">
@@ -213,11 +263,11 @@ export default function DashboardPage() {
                         </TableCell>
                         <TableCell>${payment.amount.toFixed(2)}</TableCell>
                         <TableCell>
-                          <Badge 
-                            variant={payment.status === 'completed' ? 'secondary' : payment.status === 'failed' ? 'destructive' : 'outline'}
+                          <Badge
+                            variant={payment.status === "completed" ? "secondary" : payment.status === "failed" ? "destructive" : "outline"}
                             className={
-                              payment.status === 'completed' ? 'bg-green-100 text-green-800 hover:bg-green-100 border-transparent' : 
-                              payment.status === 'pending' ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-100 border-transparent' : ''
+                              payment.status === "completed" ? "bg-green-100 text-green-800 hover:bg-green-100 border-transparent" :
+                              payment.status === "pending" ? "bg-yellow-100 text-yellow-800 hover:bg-yellow-100 border-transparent" : ""
                             }
                           >
                             {payment.status.charAt(0).toUpperCase() + payment.status.slice(1)}
