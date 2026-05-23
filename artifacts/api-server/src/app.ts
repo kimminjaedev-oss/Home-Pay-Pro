@@ -8,8 +8,8 @@ import {
   clerkProxyMiddleware,
   getClerkProxyHost,
 } from "./middlewares/clerkProxyMiddleware";
-import router from "./routes";
 import { logger } from "./lib/logger";
+import router from "./routes";
 
 const app: Express = express();
 

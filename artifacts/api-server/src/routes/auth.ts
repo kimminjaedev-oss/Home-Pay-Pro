@@ -25,10 +25,16 @@ router.get("/auth/me", requireAuth, async (req: AuthenticatedRequest, res): Prom
 // JIT user provisioning — called after Clerk sign-in/sign-up to sync user into DB
 router.post("/auth/provision", async (req, res): Promise<void> => {
   const auth = getAuth(req);
-  const clerkId = auth?.userId;
+  const clerkId = (auth?.sessionClaims?.userId as string | undefined) || auth?.userId || undefined;
 
   if (!clerkId) {
-    res.status(401).json({ error: "Unauthorized" });
+    res.status(401).json({
+      error: "Unauthorized",
+      debug: {
+        userId: auth?.userId,
+        sessionClaimsKeys: auth?.sessionClaims ? Object.keys(auth.sessionClaims) : null,
+      }
+    });
     return;
   }
 
@@ -80,11 +86,6 @@ router.post("/auth/provision", async (req, res): Promise<void> => {
     if (household) {
       unpaidBalance = parseFloat(household.unpaidBalance);
       matchedUnitNumber = household.unitNumber;
-
-      await db
-        .update(householdsTable)
-        .set({ userId: undefined })
-        .where(eq(householdsTable.id, household.id));
     }
   }
 

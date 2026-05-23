@@ -41,20 +41,56 @@ router.post("/admin/import", requireAdmin, async (req: AuthenticatedRequest, res
           })
           .where(eq(householdsTable.id, existing.id));
 
-        if (existing.userId) {
+        // Sync balance to linked user (by userId or by email)
+        const userIdToUpdate = existing.userId;
+        if (userIdToUpdate) {
           await db
             .update(usersTable)
             .set({ unpaidBalance: String(row.unpaidBalance) })
-            .where(eq(usersTable.id, existing.userId));
+            .where(eq(usersTable.id, userIdToUpdate));
+        } else {
+          // Try to find user by email and link them
+          const [matchedUser] = await db
+            .select()
+            .from(usersTable)
+            .where(eq(usersTable.email, row.email))
+            .limit(1);
+          if (matchedUser) {
+            await db
+              .update(usersTable)
+              .set({ unpaidBalance: String(row.unpaidBalance), unitNumber: row.unitNumber })
+              .where(eq(usersTable.id, matchedUser.id));
+            await db
+              .update(householdsTable)
+              .set({ userId: matchedUser.id })
+              .where(eq(householdsTable.id, existing.id));
+          }
         }
         updated++;
       } else {
-        await db.insert(householdsTable).values({
+        const [newHousehold] = await db.insert(householdsTable).values({
           unitNumber: row.unitNumber,
           ownerName: row.ownerName,
           email: row.email,
           unpaidBalance: String(row.unpaidBalance),
-        });
+        }).returning();
+
+        // Try to find an existing user with this email and link them
+        const [matchedUser] = await db
+          .select()
+          .from(usersTable)
+          .where(eq(usersTable.email, row.email))
+          .limit(1);
+        if (matchedUser) {
+          await db
+            .update(usersTable)
+            .set({ unpaidBalance: String(row.unpaidBalance), unitNumber: row.unitNumber })
+            .where(eq(usersTable.id, matchedUser.id));
+          await db
+            .update(householdsTable)
+            .set({ userId: matchedUser.id })
+            .where(eq(householdsTable.id, newHousehold.id));
+        }
         imported++;
       }
     } catch (err) {

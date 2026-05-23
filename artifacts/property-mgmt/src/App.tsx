@@ -1,6 +1,7 @@
-import { useEffect, useRef } from "react";
-import { ClerkProvider, SignIn, SignUp, Show, useClerk } from "@clerk/react";
+import { useEffect, useLayoutEffect, useRef } from "react";
+import { ClerkProvider, SignIn, SignUp, Show, useClerk, useUser, useAuth } from "@clerk/react";
 import { publishableKeyFromHost } from "@clerk/react/internal";
+import { setAuthTokenGetter } from "@workspace/api-client-react";
 import { shadcn } from "@clerk/themes";
 import { Switch, Route, Redirect, useLocation, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
@@ -124,6 +125,19 @@ function HomeRedirect() {
   );
 }
 
+function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
+  return (
+    <>
+      <Show when="signed-in">
+        <Component />
+      </Show>
+      <Show when="signed-out">
+        <Redirect to="/" />
+      </Show>
+    </>
+  );
+}
+
 function ClerkQueryClientCacheInvalidator() {
   const { addListener } = useClerk();
   const queryClient = useQueryClient();
@@ -142,6 +156,52 @@ function ClerkQueryClientCacheInvalidator() {
     });
     return unsubscribe;
   }, [addListener, queryClient]);
+
+  return null;
+}
+
+function ClerkTokenSetter() {
+  const { getToken } = useAuth();
+  useLayoutEffect(() => {
+    setAuthTokenGetter(() => getToken());
+    return () => setAuthTokenGetter(null);
+  }, [getToken]);
+  return null;
+}
+
+function UserProvisionEffect() {
+  const { user, isLoaded, isSignedIn } = useUser();
+  const { getToken } = useAuth();
+  const provisionedRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn || !user) return;
+    if (provisionedRef.current === user.id) return;
+
+    const name =
+      user.fullName ||
+      user.firstName ||
+      user.primaryEmailAddress?.emailAddress?.split("@")[0] ||
+      "Unknown";
+    const email = user.primaryEmailAddress?.emailAddress;
+    if (!email) return;
+
+    provisionedRef.current = user.id;
+
+    getToken().then((token) => {
+      if (!token) return;
+      fetch(`${basePath}/api/auth/provision`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ name, email }),
+      }).catch(() => {
+        provisionedRef.current = null;
+      });
+    });
+  }, [isLoaded, isSignedIn, user, getToken]);
 
   return null;
 }
@@ -174,13 +234,19 @@ function ClerkProviderWithRoutes() {
       routerReplace={(to) => setLocation(stripBase(to), { replace: true })}
     >
       <QueryClientProvider client={queryClient}>
+        <ClerkTokenSetter />
         <ClerkQueryClientCacheInvalidator />
+        <UserProvisionEffect />
         <Switch>
           <Route path="/" component={HomeRedirect} />
           <Route path="/sign-in/*?" component={SignInPage} />
           <Route path="/sign-up/*?" component={SignUpPage} />
-          <Route path="/dashboard" component={DashboardPage} />
-          <Route path="/admin" component={AdminPage} />
+          <Route path="/dashboard">
+            <ProtectedRoute component={DashboardPage} />
+          </Route>
+          <Route path="/admin">
+            <ProtectedRoute component={AdminPage} />
+          </Route>
           <Route path="/payment/success" component={PaymentSuccessPage} />
           <Route path="/payment/cancel" component={PaymentCancelPage} />
           <Route component={NotFound} />
