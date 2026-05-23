@@ -1,0 +1,280 @@
+Build a production-ready MVP property management payment web application using Next.js 15 (App Router), TypeScript, TailwindCSS, Prisma, PostgreSQL, and Stripe.
+
+The application is for property/maintenance fee management for apartment unit owners (households).
+
+Main Goal:
+Users should be able to:
+
+1. Register/login
+2. Automatically see their unpaid balance from imported Excel data
+3. Pay maintenance fees using Stripe
+4. Pay custom amounts (partial payments allowed)
+5. Admin should later manage payment status and households
+
+The project should prioritize MVP speed and clean architecture.
+
+========================
+TECH STACK
+==========
+
+Frontend:
+
+* Next.js 15 App Router
+* TypeScript
+* TailwindCSS
+* shadcn/ui components
+* React Hook Form
+* Zod validation
+
+Backend:
+
+* Next.js server actions / route handlers
+* Prisma ORM
+* PostgreSQL
+
+Authentication:
+
+* NextAuth/Auth.js
+* Email/password authentication
+
+Payments:
+
+* Stripe Checkout
+* Stripe Webhooks
+* Support custom payment amounts
+
+File Handling:
+
+* Excel (.xlsx) upload parsing using SheetJS or similar library
+
+Deployment-ready:
+
+* Vercel compatible
+* Environment variable support
+
+========================
+APP STRUCTURE
+=============
+
+Create these main pages:
+
+1. Home Page
+
+* Modern clean landing page
+* Explain the service
+* CTA buttons:
+
+  * Login
+  * Register
+* Responsive design
+
+2. Register Page
+   Fields:
+
+* Full name
+* Email
+* Password
+* Unit number or household identifier
+
+During registration:
+
+* Match user against imported Excel data
+* If household exists:
+
+  * Automatically fetch unpaid balance
+* Save unpaid balance into DB
+
+3. Login Page
+
+* Email/password login
+* Secure authentication
+* Redirect to dashboard
+
+4. User Dashboard
+   After login show:
+
+* Household info
+* Current unpaid balance
+* Monthly fee ($36)
+* Total suggested amount
+* Payment history
+
+Main feature:
+
+* User can enter ANY payment amount manually
+* Partial payment allowed
+* Example:
+  unpaid balance = $120
+  monthly fee = $36
+  user may pay:
+
+  * full amount
+  * partial amount
+  * custom amount
+
+Payment button:
+
+* Stripe Checkout session
+
+After payment:
+
+* Save transaction history
+* Update unpaid balance
+* Show payment status
+
+5. Admin Dashboard (basic MVP structure)
+   Admin can:
+
+* View all households
+* View paid/unpaid users
+* Search/filter users
+* View payment history
+* Export payment data to Excel
+
+Admin routes should be protected.
+
+========================
+DATABASE MODELS
+===============
+
+Create Prisma schema with models similar to:
+
+User
+
+* id
+* name
+* email
+* password
+* householdId
+* unpaidBalance
+* role (USER / ADMIN)
+
+Payment
+
+* id
+* userId
+* amount
+* stripeSessionId
+* paymentStatus
+* createdAt
+
+ImportedHouseholdData
+
+* id
+* householdId
+* ownerName
+* email
+* unpaidBalance
+
+EmailLog
+
+* id
+* recipient
+* subject
+* status
+* sentAt
+
+========================
+EXCEL IMPORT SYSTEM
+===================
+
+Create admin-only Excel upload functionality.
+
+Requirements:
+
+* Upload .xlsx file
+* Parse rows
+* Save imported data into DB
+* Match users using:
+
+  * householdId
+    OR
+  * email
+
+Imported fields:
+
+* Household/unit number
+* Owner name
+* Email
+* Unpaid balance
+
+========================
+STRIPE LOGIC
+============
+
+Requirements:
+
+* Stripe Checkout integration
+* Custom payment amount support
+* Store Stripe session IDs
+* Handle success/cancel redirects
+* Implement Stripe webhook endpoint
+
+Webhook should:
+
+* Confirm payment success
+* Update payment status
+* Reduce unpaid balance
+* Save payment record
+
+========================
+ADMIN FEATURES (MVP)
+====================
+
+Admin dashboard should include:
+
+* Total households
+* Paid/unpaid counts
+* Search households
+* Filter unpaid users
+* Payment history table
+* Export CSV/Excel button
+
+Prepare architecture for future:
+
+* automated late fee logic
+* automated email reminders
+
+========================
+UI REQUIREMENTS
+===============
+
+Design:
+
+* Minimal modern SaaS dashboard
+* Clean spacing
+* Mobile responsive
+* Use cards/tables/forms
+* Dark/light mode support optional
+
+Pages:
+
+* Dashboard layout with sidebar
+* Mobile responsive navigation
+
+========================
+IMPORTANT REQUIREMENTS
+======================
+
+* Use clean folder structure
+* Strong TypeScript typing
+* Environment variable examples
+* Include README setup instructions
+* Include seed script example
+* Include dummy sample Excel import data
+* Use best practices
+* Make architecture scalable
+* Keep MVP simple but production-oriented
+
+Generate:
+
+* Complete project structure
+* Prisma schema
+* Stripe integration scaffold
+* Auth scaffold
+* Dashboard UI scaffold
+* Example API routes
+* Example Excel import implementation
+* Example webhook handler
+
+Focus on building the MVP skeleton quickly but cleanly.

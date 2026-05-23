@@ -3,20 +3,28 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Property Management Payment Platform API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: Authentication
+  - name: households
+    description: Household management
+  - name: payments
+    description: Payment processing
+  - name: admin
+    description: Admin operations
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +32,315 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  # ── Auth ──────────────────────────────────────────────────────────────
+  /auth/register:
+    post:
+      operationId: register
+      tags: [auth]
+      summary: Register a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterInput"
+      responses:
+        "201":
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Email already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Login with email and password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginInput"
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Logout current user
+      responses:
+        "200":
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Get current authenticated user
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ── Households ────────────────────────────────────────────────────────
+  /households:
+    get:
+      operationId: listHouseholds
+      tags: [households]
+      summary: List all households (admin only)
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: unpaidOnly
+          in: query
+          schema:
+            type: boolean
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: List of households
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HouseholdListResponse"
+
+  /households/my:
+    get:
+      operationId: getMyHousehold
+      tags: [households]
+      summary: Get current user's household info
+      responses:
+        "200":
+          description: User's household
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HouseholdDetail"
+        "404":
+          description: No household found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /households/{id}:
+    get:
+      operationId: getHousehold
+      tags: [households]
+      summary: Get household by ID (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Household details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HouseholdDetail"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ── Admin Excel Import ─────────────────────────────────────────────────
+  /admin/import:
+    post:
+      operationId: importHouseholds
+      tags: [admin]
+      summary: Import households from Excel data
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImportInput"
+      responses:
+        "200":
+          description: Import result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportResult"
+
+  /admin/stats:
+    get:
+      operationId: getAdminStats
+      tags: [admin]
+      summary: Get admin dashboard statistics
+      responses:
+        "200":
+          description: Dashboard statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminStats"
+
+  /admin/export:
+    get:
+      operationId: exportPayments
+      tags: [admin]
+      summary: Export payment data as CSV
+      responses:
+        "200":
+          description: CSV export
+          content:
+            text/csv:
+              schema:
+                type: string
+
+  # ── Payments ──────────────────────────────────────────────────────────
+  /payments/create-checkout:
+    post:
+      operationId: createCheckout
+      tags: [payments]
+      summary: Create a Stripe checkout session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CheckoutInput"
+      responses:
+        "200":
+          description: Checkout session URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckoutResponse"
+        "400":
+          description: Invalid amount
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /payments/history:
+    get:
+      operationId: getPaymentHistory
+      tags: [payments]
+      summary: Get current user's payment history
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Payment history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentListResponse"
+
+  /payments/all:
+    get:
+      operationId: getAllPayments
+      tags: [payments]
+      summary: Get all payments (admin only)
+      parameters:
+        - name: userId
+          in: query
+          schema:
+            type: ["integer", "null"]
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, completed, failed]
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: All payments
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentListResponse"
+
+  /payments/webhook:
+    post:
+      operationId: stripeWebhook
+      tags: [payments]
+      summary: Stripe webhook handler
+      responses:
+        "200":
+          description: Webhook processed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +351,256 @@ components:
       required:
         - status
 
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    MessageResponse:
+      type: object
+      properties:
+        message:
+          type: string
+      required:
+        - message
+
+    # ── Auth Schemas ────────────────────────────────────────────────────
+    RegisterInput:
+      type: object
+      required: [name, email, password, unitNumber]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+        unitNumber:
+          type: string
+          minLength: 1
+
+    LoginInput:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+
+    User:
+      type: object
+      required: [id, name, email, role, unitNumber, unpaidBalance, createdAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+          enum: [user, admin]
+        unitNumber:
+          type: ["string", "null"]
+        unpaidBalance:
+          type: number
+        createdAt:
+          type: string
+          format: date-time
+
+    AuthResponse:
+      type: object
+      required: [user, token]
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        token:
+          type: string
+
+    # ── Household Schemas ───────────────────────────────────────────────
+    Household:
+      type: object
+      required: [id, unitNumber, ownerName, email, unpaidBalance, createdAt]
+      properties:
+        id:
+          type: integer
+        unitNumber:
+          type: string
+        ownerName:
+          type: string
+        email:
+          type: string
+        unpaidBalance:
+          type: number
+        userId:
+          type: ["integer", "null"]
+        createdAt:
+          type: string
+          format: date-time
+
+    HouseholdDetail:
+      type: object
+      required: [id, unitNumber, ownerName, email, unpaidBalance, monthlyFee, totalDue, createdAt]
+      properties:
+        id:
+          type: integer
+        unitNumber:
+          type: string
+        ownerName:
+          type: string
+        email:
+          type: string
+        unpaidBalance:
+          type: number
+        monthlyFee:
+          type: number
+        totalDue:
+          type: number
+        userId:
+          type: ["integer", "null"]
+        userName:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+
+    HouseholdListResponse:
+      type: object
+      required: [households, total, page, limit]
+      properties:
+        households:
+          type: array
+          items:
+            $ref: "#/components/schemas/Household"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+
+    # ── Import Schemas ──────────────────────────────────────────────────
+    ImportHouseholdRow:
+      type: object
+      required: [unitNumber, ownerName, email, unpaidBalance]
+      properties:
+        unitNumber:
+          type: string
+        ownerName:
+          type: string
+        email:
+          type: string
+        unpaidBalance:
+          type: number
+
+    ImportInput:
+      type: object
+      required: [rows]
+      properties:
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/ImportHouseholdRow"
+
+    ImportResult:
+      type: object
+      required: [imported, updated, skipped, errors]
+      properties:
+        imported:
+          type: integer
+        updated:
+          type: integer
+        skipped:
+          type: integer
+        errors:
+          type: array
+          items:
+            type: string
+
+    # ── Admin Schemas ───────────────────────────────────────────────────
+    AdminStats:
+      type: object
+      required: [totalHouseholds, paidCount, unpaidCount, totalCollected, totalOutstanding, recentPayments]
+      properties:
+        totalHouseholds:
+          type: integer
+        paidCount:
+          type: integer
+        unpaidCount:
+          type: integer
+        totalCollected:
+          type: number
+        totalOutstanding:
+          type: number
+        recentPayments:
+          type: array
+          items:
+            $ref: "#/components/schemas/Payment"
+
+    # ── Payment Schemas ─────────────────────────────────────────────────
+    Payment:
+      type: object
+      required: [id, userId, amount, status, createdAt]
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        userName:
+          type: ["string", "null"]
+        userEmail:
+          type: ["string", "null"]
+        unitNumber:
+          type: ["string", "null"]
+        amount:
+          type: number
+        stripeSessionId:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [pending, completed, failed]
+        createdAt:
+          type: string
+          format: date-time
+
+    PaymentListResponse:
+      type: object
+      required: [payments, total, page, limit]
+      properties:
+        payments:
+          type: array
+          items:
+            $ref: "#/components/schemas/Payment"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+
+    CheckoutInput:
+      type: object
+      required: [amount]
+      properties:
+        amount:
+          type: number
+          minimum: 1
+        description:
+          type: string
+
+    CheckoutResponse:
+      type: object
+      required: [url, sessionId]
+      properties:
+        url:
+          type: string
+        sessionId:
+          type: string
