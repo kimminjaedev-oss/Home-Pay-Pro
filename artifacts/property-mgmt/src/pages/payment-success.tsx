@@ -1,11 +1,32 @@
-import React from "react";
-import { Link, useLocation } from "wouter";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { CheckCircle2, XCircle, ArrowLeft } from "lucide-react";
 import { AppLayout } from "@/components/layout";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { ArrowLeft, CheckCircle2 } from "lucide-react";
+import { useEffect, useRef } from "react";
+import { Link } from "wouter";
 
 export default function PaymentSuccessPage() {
+  const hasConfirmedRef = useRef(false);
+
+  useEffect(() => {
+    if (hasConfirmedRef.current) return;
+
+    const sessionId = new URLSearchParams(window.location.search).get("session_id");
+    if (!sessionId) return;
+
+    hasConfirmedRef.current = true;
+
+    void fetch("/api/payments/confirm", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ sessionId }),
+    }).catch((err) => {
+      console.error("Failed to confirm payment after redirect", err);
+    });
+  }, []);
+
   return (
     <AppLayout>
       <div className="flex justify-center items-center py-12 md:py-24">

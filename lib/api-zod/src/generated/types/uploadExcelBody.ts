@@ -6,9 +6,6 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type ListHouseholdsParams = {
-search?: string;
-unpaidOnly?: boolean;
-page?: number;
-limit?: number;
+export type UploadExcelBody = {
+  file: unknown;
 };

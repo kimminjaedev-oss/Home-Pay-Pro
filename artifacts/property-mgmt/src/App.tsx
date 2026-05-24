@@ -1,26 +1,29 @@
-import { useEffect, useLayoutEffect, useRef } from "react";
-import { ClerkProvider, SignIn, SignUp, Show, useClerk, useUser, useAuth } from "@clerk/react";
-import { publishableKeyFromHost } from "@clerk/react/internal";
-import { setAuthTokenGetter } from "@workspace/api-client-react";
-import { shadcn } from "@clerk/themes";
-import { Switch, Route, Redirect, useLocation, Router as WouterRouter } from "wouter";
-import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { ClerkProvider, Show, SignIn, SignUp, useAuth, useClerk, useUser } from "@clerk/react";
+import { publishableKeyFromHost } from "@clerk/react/internal";
+import { shadcn } from "@clerk/themes";
+import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
+import { setAuthTokenGetter } from "@workspace/api-client-react";
+import { useEffect, useLayoutEffect, useRef } from "react";
+import { Redirect, Route, Switch, useLocation, Router as WouterRouter } from "wouter";
 
-import NotFound from "@/pages/not-found";
-import LandingPage from "@/pages/landing";
-import DashboardPage from "@/pages/dashboard";
 import AdminPage from "@/pages/admin";
-import PaymentSuccessPage from "@/pages/payment-success";
+import DashboardPage from "@/pages/dashboard";
+import LandingPage from "@/pages/landing";
+import NotFound from "@/pages/not-found";
 import PaymentCancelPage from "@/pages/payment-cancel";
+import PaymentSuccessPage from "@/pages/payment-success";
 
 const queryClient = new QueryClient();
 
-const clerkPubKey = publishableKeyFromHost(
-  window.location.hostname,
-  import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,
-);
+const clerkPubKey =
+  import.meta.env.MODE === "production"
+    ? publishableKeyFromHost(
+        window.location.hostname,
+        import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,
+      )
+    : import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
 const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");

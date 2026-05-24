@@ -5,11 +5,9 @@
  * Property Management Payment Platform API
  * OpenAPI spec version: 0.1.0
  */
-import type { Payment } from './payment';
+import type { ImportedHouseholdDataRow } from './importedHouseholdDataRow';
 
-export interface PaymentListResponse {
-  payments: Payment[];
+export interface ImportedDataResponse {
+  data: ImportedHouseholdDataRow[];
   total: number;
-  page: number;
-  limit: number;
 }

@@ -1,109 +1,112 @@
-import React, { useState } from "react";
 import { AppLayout } from "@/components/layout";
-import { useGetAdminStats, useListHouseholds, useGetAllPayments, useImportHouseholds } from "@workspace/api-client-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { format } from "date-fns";
-import { Users, AlertCircle, CheckCircle2, DollarSign, Search, Upload, TrendingUp } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import * as XLSX from "xlsx";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-
-interface ImportRow {
-  unitNumber: string;
-  ownerName: string;
-  email: string;
-  unpaidBalance: number;
-  overdueSince: string | null;
-}
-
-function parseExcelDate(raw: unknown): string | null {
-  if (!raw) return null;
-  if (typeof raw === "number") {
-    // Excel serial date (days since 1900-01-01, with Excel's leap-year bug offset)
-    const d = new Date((raw - 25569) * 86400 * 1000);
-    return isNaN(d.getTime()) ? null : d.toISOString();
-  }
-  const d = new Date(String(raw));
-  return isNaN(d.getTime()) ? null : d.toISOString();
-}
+import { useGetAdminStats, useGetAllPayments, useGetImportedData, useGetMe, useListHouseholds, useUploadExcel } from "@workspace/api-client-react";
+import { format } from "date-fns";
+import { AlertCircle, CheckCircle2, DollarSign, Search, TrendingUp, Upload, Users } from "lucide-react";
+import React, { useState } from "react";
+import { Link } from "wouter";
 
 export default function AdminPage() {
-  const { data: stats, isLoading: isStatsLoading } = useGetAdminStats({ query: { queryKey: ["/api/admin/stats"] } });
+  const { data: me, isLoading: isMeLoading } = useGetMe({ query: { queryKey: ["/api/auth/me"] } });
+  const isAdmin = me?.role === "admin";
+
+  const { data: stats, isLoading: isStatsLoading } = useGetAdminStats({
+    query: {
+      queryKey: ["/api/admin/stats"],
+      enabled: isAdmin,
+    },
+  });
 
   const [search, setSearch] = useState("");
-  const { data: householdsRes, isLoading: isHouseholdsLoading } = useListHouseholds({ search, limit: 50 }, { query: { queryKey: ["/api/households", { search }] } });
+  const { data: householdsRes, isLoading: isHouseholdsLoading } = useListHouseholds(
+    { search, limit: 50 },
+    {
+      query: {
+        queryKey: ["/api/households", { search }],
+        enabled: isAdmin,
+      },
+    },
+  );
 
-  const { data: paymentsRes, isLoading: isPaymentsLoading } = useGetAllPayments({ limit: 50 }, { query: { queryKey: ["/api/payments/all"] } });
+  const { data: paymentsRes, isLoading: isPaymentsLoading } = useGetAllPayments(
+    { limit: 50 },
+    {
+      query: {
+        queryKey: ["/api/payments/all"],
+        enabled: isAdmin,
+      },
+    },
+  );
 
-  const importMutation = useImportHouseholds();
+  const uploadExcelMutation = useUploadExcel();
+  const { data: importedDataRes, isLoading: isImportedDataLoading, refetch: refetchImportedData } = useGetImportedData({
+    query: {
+      queryKey: ["/api/admin/imported-data"],
+      enabled: isAdmin,
+    },
+  });
   const { toast } = useToast();
 
-  const [importFile, setImportFile] = useState<File | null>(null);
-  const [parsedRows, setParsedRows] = useState<ImportRow[]>([]);
-  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  if (isMeLoading) {
+    return (
+      <AppLayout>
+        <div className="space-y-4">
+          <Skeleton className="h-10 w-80" />
+          <Skeleton className="h-64 w-full rounded-xl" />
+        </div>
+      </AppLayout>
+    );
+  }
+
+  if (!isAdmin) {
+    return (
+      <AppLayout>
+        <Card className="max-w-2xl mx-auto border-amber-200 bg-amber-50/40">
+          <CardHeader>
+            <CardTitle className="text-amber-900">Admin access required</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-amber-800">
+            <p>
+              현재 계정 역할이 <strong>{me?.role ?? "unknown"}</strong> 입니다. 관리자 화면은 <strong>admin</strong> 권한이 필요합니다.
+            </p>
+            <Link href="/dashboard">
+              <Button variant="outline">Go to Dashboard</Button>
+            </Link>
+          </CardContent>
+        </Card>
+      </AppLayout>
+    );
+  }
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setImportFile(file);
 
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      try {
-        const bstr = evt.target?.result;
-        const wb = XLSX.read(bstr, { type: "binary", cellDates: false });
-        const wsname = wb.SheetNames[0];
-        const ws = wb.Sheets[wsname];
-        const data = XLSX.utils.sheet_to_json(ws);
-
-        const mappedRows: ImportRow[] = (data as any[]).map((row) => ({
-          unitNumber: String(row.Unit || row.unitNumber || row["Unit Number"] || ""),
-          ownerName: String(row.Owner || row.Name || row.ownerName || ""),
-          email: String(row.Email || row.email || ""),
-          unpaidBalance: Number(row.Balance || row.unpaidBalance || row["Unpaid Balance"] || 0),
-          overdueSince: parseExcelDate(
-            row.OverdueSince ?? row.overdueSince ?? row["Overdue Since"] ?? row["Overdue Date"] ?? null
-          ),
-        })).filter((row) => row.unitNumber && row.ownerName);
-
-        setParsedRows(mappedRows);
-        setIsImportModalOpen(true);
-      } catch {
-        toast({
-          title: "Error parsing file",
-          description: "Could not read the Excel file. Please check the format.",
-          variant: "destructive",
-        });
-      }
-    };
-    reader.readAsBinaryString(file);
-  };
-
-  const handleImportSubmit = () => {
-    importMutation.mutate({ data: { rows: parsedRows } }, {
+    uploadExcelMutation.mutate({ data: { file } }, {
       onSuccess: (res) => {
-        setIsImportModalOpen(false);
-        setImportFile(null);
-        setParsedRows([]);
+        void refetchImportedData();
         toast({
-          title: "Import Successful",
+          title: "Upload Successful",
           description: `Imported: ${res.imported}, Updated: ${res.updated}, Skipped: ${res.skipped}`,
         });
       },
       onError: () => {
         toast({
-          title: "Import Failed",
-          description: "An error occurred during import.",
+          title: "Upload Failed",
+          description: "Could not upload/parse the Excel file. Please check the columns and try again.",
           variant: "destructive",
         });
       },
     });
+
+    e.currentTarget.value = "";
   };
 
   return (
@@ -158,7 +161,7 @@ export default function AdminPage() {
                 <DollarSign className="h-4 w-4 text-green-500" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-slate-900">${stats.totalCollected.toFixed(2)}</div>
+                <div className="text-2xl font-bold text-slate-900">${stats.totalCollected ? stats.totalCollected.toFixed(2) : '0.00'}</div>
               </CardContent>
             </Card>
             <Card>
@@ -167,16 +170,17 @@ export default function AdminPage() {
                 <AlertCircle className="h-4 w-4 text-red-500" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-slate-900">${stats.totalOutstanding.toFixed(2)}</div>
+                <div className="text-2xl font-bold text-slate-900">${stats.totalOutstanding ? stats.totalOutstanding.toFixed(2) : '0.00'}</div>
               </CardContent>
             </Card>
           </div>
         ) : null}
 
         <Tabs defaultValue="households" className="w-full">
-          <TabsList className="grid w-[400px] grid-cols-2 mb-6">
+          <TabsList className="grid w-135 grid-cols-3 mb-6">
             <TabsTrigger value="households">Households</TabsTrigger>
             <TabsTrigger value="payments">All Payments</TabsTrigger>
+            <TabsTrigger value="imports">Imported Data</TabsTrigger>
           </TabsList>
 
           <TabsContent value="households" className="space-y-4">
@@ -214,12 +218,12 @@ export default function AdminPage() {
                           <Skeleton className="h-8 w-full max-w-md mx-auto" />
                         </TableCell>
                       </TableRow>
-                    ) : householdsRes?.households.map((h) => (
+                    ) : householdsRes?.households?.map((h) => (
                       <TableRow key={h.id}>
                         <TableCell className="font-medium text-slate-900">{h.unitNumber}</TableCell>
                         <TableCell>{h.ownerName}</TableCell>
                         <TableCell className="text-slate-500">{h.email}</TableCell>
-                        <TableCell className="text-right font-medium">${h.unpaidBalance.toFixed(2)}</TableCell>
+                        <TableCell className="text-right font-medium">${h.unpaidBalance ? h.unpaidBalance.toFixed(2) : '0.00'}</TableCell>
                         <TableCell className="text-right text-sm">
                           {h.overdueSince ? (
                             <span className="text-red-600 flex items-center justify-end gap-1">
@@ -240,7 +244,7 @@ export default function AdminPage() {
                         </TableCell>
                       </TableRow>
                     ))}
-                    {householdsRes?.households.length === 0 && (
+                    {householdsRes?.households?.length === 0 && (
                       <TableRow>
                         <TableCell colSpan={6} className="text-center py-8 text-slate-500">No households found.</TableCell>
                       </TableRow>
@@ -270,7 +274,7 @@ export default function AdminPage() {
                           <Skeleton className="h-8 w-full max-w-md mx-auto" />
                         </TableCell>
                       </TableRow>
-                    ) : paymentsRes?.payments.map((p) => (
+                    ) : paymentsRes?.payments?.map((p) => (
                       <TableRow key={p.id}>
                         <TableCell className="text-slate-500">
                           {format(new Date(p.createdAt), "MMM d, yyyy h:mm a")}
@@ -279,7 +283,7 @@ export default function AdminPage() {
                           <div className="font-medium text-slate-900">{p.unitNumber || "N/A"}</div>
                           <div className="text-xs text-slate-500">{p.userName || p.userEmail}</div>
                         </TableCell>
-                        <TableCell className="font-medium">${p.amount.toFixed(2)}</TableCell>
+                        <TableCell className="font-medium">${p.amount ? p.amount.toFixed(2) : '0.00'}</TableCell>
                         <TableCell>
                           <Badge
                             variant={p.status === "completed" ? "secondary" : p.status === "failed" ? "destructive" : "outline"}
@@ -298,69 +302,58 @@ export default function AdminPage() {
               </div>
             </Card>
           </TabsContent>
-        </Tabs>
 
-        {/* Import Preview Modal */}
-        <Dialog open={isImportModalOpen} onOpenChange={setIsImportModalOpen}>
-          <DialogContent className="max-w-4xl">
-            <DialogHeader>
-              <DialogTitle>Preview Import</DialogTitle>
-              <DialogDescription>
-                Found {parsedRows.length} valid rows to import. Review before proceeding.
-                Columns accepted: <code className="text-xs bg-slate-100 px-1 py-0.5 rounded">Unit</code>,{" "}
-                <code className="text-xs bg-slate-100 px-1 py-0.5 rounded">Owner/Name</code>,{" "}
-                <code className="text-xs bg-slate-100 px-1 py-0.5 rounded">Email</code>,{" "}
-                <code className="text-xs bg-slate-100 px-1 py-0.5 rounded">Balance</code>,{" "}
-                <code className="text-xs bg-slate-100 px-1 py-0.5 rounded">Overdue Since</code> (optional)
-              </DialogDescription>
-            </DialogHeader>
-            <div className="max-h-[400px] overflow-auto border border-slate-200 rounded-md">
-              <Table>
-                <TableHeader className="bg-slate-50 sticky top-0">
-                  <TableRow>
-                    <TableHead>Unit</TableHead>
-                    <TableHead>Owner</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead className="text-right">Balance</TableHead>
-                    <TableHead className="text-right">Overdue Since</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {parsedRows.slice(0, 50).map((r, i) => (
-                    <TableRow key={i}>
-                      <TableCell>{r.unitNumber}</TableCell>
-                      <TableCell>{r.ownerName}</TableCell>
-                      <TableCell>{r.email}</TableCell>
-                      <TableCell className="text-right">${Number(r.unpaidBalance).toFixed(2)}</TableCell>
-                      <TableCell className="text-right text-sm">
-                        {r.overdueSince ? (
-                          <span className="text-red-600">{format(new Date(r.overdueSince), "MMM d, yyyy")}</span>
-                        ) : r.unpaidBalance > 0 ? (
-                          <span className="text-orange-500 text-xs">Auto-set today</span>
-                        ) : (
-                          <span className="text-slate-400">—</span>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {parsedRows.length > 50 && (
-                    <TableRow>
-                      <TableCell colSpan={5} className="text-center text-slate-500 py-2 text-sm">
-                        ... and {parsedRows.length - 50} more rows
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => { setIsImportModalOpen(false); setImportFile(null); }}>Cancel</Button>
-              <Button onClick={handleImportSubmit} disabled={importMutation.isPending} data-testid="button-confirm-import">
-                {importMutation.isPending ? "Importing..." : "Confirm Import"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+          <TabsContent value="imports">
+            <Card className="shadow-sm border-slate-200">
+              <CardHeader>
+                <CardTitle className="text-base">ImportedHouseholdData (Staging)</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="rounded-md overflow-hidden border border-slate-200">
+                  <Table>
+                    <TableHeader className="bg-slate-50">
+                      <TableRow>
+                        <TableHead>Unit</TableHead>
+                        <TableHead>Owner</TableHead>
+                        <TableHead>Email</TableHead>
+                        <TableHead className="text-right">Unpaid Balance</TableHead>
+                        <TableHead className="text-right">Imported At</TableHead>
+                        <TableHead className="text-right">Match</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {isImportedDataLoading ? (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-center py-8">
+                            <Skeleton className="h-8 w-full max-w-md mx-auto" />
+                          </TableCell>
+                        </TableRow>
+                      ) : importedDataRes?.data?.map((row) => (
+                        <TableRow key={row.id}>
+                          <TableCell className="font-medium text-slate-900">{row.unitNumber}</TableCell>
+                          <TableCell>{row.ownerName}</TableCell>
+                          <TableCell className="text-slate-500">{row.email}</TableCell>
+                          <TableCell className="text-right font-medium">${row.unpaidBalance.toFixed(2)}</TableCell>
+                          <TableCell className="text-right text-slate-500 text-sm">{format(new Date(row.importedAt), "MMM d, yyyy h:mm a")}</TableCell>
+                          <TableCell className="text-right">
+                            <Badge variant={row.isMatched ? "secondary" : "outline"} className={row.isMatched ? "bg-green-100 text-green-800" : ""}>
+                              {row.isMatched ? `Matched${row.matchedUserId ? ` (#${row.matchedUserId})` : ""}` : "Unmatched"}
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      {!isImportedDataLoading && (importedDataRes?.data?.length ?? 0) === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-center py-8 text-slate-500">No imported staging rows yet.</TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </div>
     </AppLayout>
   );

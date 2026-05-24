@@ -1,20 +1,25 @@
+import {
+    CreateCheckoutBody,
+    CreateCheckoutResponse,
+    GetAllPaymentsQueryParams,
+    GetAllPaymentsResponse,
+    GetPaymentHistoryQueryParams,
+    GetPaymentHistoryResponse,
+    StripeWebhookResponse,
+} from "@workspace/api-zod";
+import { db, householdsTable, paymentsTable, usersTable } from "@workspace/db";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { Router } from "express";
 import Stripe from "stripe";
-import { eq, sql, desc } from "drizzle-orm";
-import { db, usersTable, paymentsTable, householdsTable } from "@workspace/db";
-import {
-  CreateCheckoutBody,
-  CreateCheckoutResponse,
-  GetPaymentHistoryQueryParams,
-  GetPaymentHistoryResponse,
-  StripeWebhookResponse,
-  GetAllPaymentsQueryParams,
-  GetAllPaymentsResponse,
-} from "@workspace/api-zod";
-import { requireAuth, requireAdmin, type AuthenticatedRequest } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
+import { requireAdmin, requireAuth, type AuthenticatedRequest } from "../middlewares/requireAuth";
 
 const router = Router();
+
+function isLocalHostLike(hostOrDomain: string): boolean {
+  const host = hostOrDomain.split(":")[0]?.toLowerCase() ?? "";
+  return host === "localhost" || host === "127.0.0.1" || host === "::1";
+}
 
 function getStripe(): Stripe {
   const key = process.env.STRIPE_SECRET_KEY;
@@ -24,7 +29,10 @@ function getStripe(): Stripe {
 
 const getBaseUrl = (req: AuthenticatedRequest): string => {
   const domains = process.env.REPLIT_DOMAINS?.split(",")[0];
-  if (domains) return `https://${domains}`;
+  if (domains) {
+    const protocol = isLocalHostLike(domains) ? "http" : "https";
+    return `${protocol}://${domains}`;
+  }
   return `${req.protocol}://${req.get("host")}`;
 };
 
@@ -95,6 +103,138 @@ router.post("/payments/create-checkout", requireAuth, async (req: AuthenticatedR
     req.log.error({ err }, "Failed to create Stripe checkout");
     res.status(500).json({ error: "Failed to create checkout session" });
   }
+});
+
+router.post("/payments/confirm", requireAuth, async (req: AuthenticatedRequest, res): Promise<void> => {
+  const user = req.dbUser!;
+  const sessionId = String(req.body?.sessionId ?? "").trim();
+
+  if (!sessionId) {
+    res.status(400).json({ error: "sessionId is required" });
+    return;
+  }
+
+  try {
+    const stripe = getStripe();
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+
+    if (session.payment_status !== "paid") {
+      res.status(400).json({ error: "Payment is not completed yet" });
+      return;
+    }
+
+    const metadataUserId = parseInt(session.metadata?.userId ?? "0", 10);
+    const paymentId = parseInt(session.metadata?.paymentId ?? "0", 10);
+    const amount = (session.amount_total ?? 0) / 100;
+
+    if (!paymentId || !metadataUserId) {
+      res.status(400).json({ error: "Invalid checkout metadata" });
+      return;
+    }
+
+    if (metadataUserId !== user.id) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+
+    const [payment] = await db
+      .select()
+      .from(paymentsTable)
+      .where(and(eq(paymentsTable.id, paymentId), eq(paymentsTable.userId, user.id)))
+      .limit(1);
+
+    if (!payment) {
+      res.status(404).json({ error: "Payment not found" });
+      return;
+    }
+
+    if (payment.status === "completed") {
+      res.json({ message: "Payment already completed" });
+      return;
+    }
+
+    await db
+      .update(paymentsTable)
+      .set({ status: "completed" })
+      .where(eq(paymentsTable.id, paymentId));
+
+    const newBalance = Math.max(0, parseFloat(user.unpaidBalance) - amount);
+    await db
+      .update(usersTable)
+      .set({ unpaidBalance: String(newBalance) })
+      .where(eq(usersTable.id, user.id));
+
+    await db
+      .update(householdsTable)
+      .set({ unpaidBalance: String(newBalance) })
+      .where(eq(householdsTable.userId, user.id));
+
+    logger.info({ userId: user.id, paymentId, amount }, "Payment confirmed from success callback");
+    res.json({ message: "Payment confirmed" });
+  } catch (err) {
+    req.log.error({ err }, "Failed to confirm payment session");
+    res.status(500).json({ error: "Failed to confirm payment" });
+  }
+});
+
+router.post("/payments/reconcile", requireAuth, async (req: AuthenticatedRequest, res): Promise<void> => {
+  const user = req.dbUser!;
+
+  const pendingPayments = await db
+    .select()
+    .from(paymentsTable)
+    .where(and(eq(paymentsTable.userId, user.id), eq(paymentsTable.status, "pending")))
+    .orderBy(desc(paymentsTable.createdAt));
+
+  const stripe = getStripe();
+  let completedCount = 0;
+  let totalAppliedAmount = 0;
+
+  for (const payment of pendingPayments) {
+    if (!payment.stripeSessionId) continue;
+
+    try {
+      const session = await stripe.checkout.sessions.retrieve(payment.stripeSessionId);
+      if (session.payment_status !== "paid") continue;
+
+      await db
+        .update(paymentsTable)
+        .set({ status: "completed" })
+        .where(eq(paymentsTable.id, payment.id));
+
+      completedCount += 1;
+      totalAppliedAmount += parseFloat(payment.amount);
+    } catch (err) {
+      logger.warn({ err, paymentId: payment.id }, "Failed to reconcile pending payment");
+    }
+  }
+
+  if (totalAppliedAmount > 0) {
+    const [freshUser] = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.id, user.id))
+      .limit(1);
+
+    if (freshUser) {
+      const newBalance = Math.max(0, parseFloat(freshUser.unpaidBalance) - totalAppliedAmount);
+      await db
+        .update(usersTable)
+        .set({ unpaidBalance: String(newBalance) })
+        .where(eq(usersTable.id, user.id));
+
+      await db
+        .update(householdsTable)
+        .set({ unpaidBalance: String(newBalance) })
+        .where(eq(householdsTable.userId, user.id));
+    }
+  }
+
+  res.json({
+    checked: pendingPayments.length,
+    completed: completedCount,
+    appliedAmount: totalAppliedAmount,
+  });
 });
 
 router.get("/payments/history", requireAuth, async (req: AuthenticatedRequest, res): Promise<void> => {
@@ -217,6 +357,24 @@ router.post("/payments/webhook", async (req, res): Promise<void> => {
     const userId = parseInt(session.metadata?.userId ?? "0", 10);
     const paymentId = parseInt(session.metadata?.paymentId ?? "0", 10);
     const amount = (session.amount_total ?? 0) / 100;
+
+    const [payment] = await db
+      .select()
+      .from(paymentsTable)
+      .where(eq(paymentsTable.id, paymentId))
+      .limit(1);
+
+    if (!payment) {
+      logger.warn({ paymentId, userId }, "Webhook payment metadata points to unknown payment");
+      res.json(StripeWebhookResponse.parse({ message: "Webhook received" }));
+      return;
+    }
+
+    if (payment.status === "completed") {
+      logger.info({ paymentId, userId }, "Webhook event ignored: payment already completed");
+      res.json(StripeWebhookResponse.parse({ message: "Webhook received" }));
+      return;
+    }
 
     await db
       .update(paymentsTable)

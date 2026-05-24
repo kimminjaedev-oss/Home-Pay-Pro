@@ -1,9 +1,9 @@
-import { Router } from "express";
 import { getAuth } from "@clerk/express";
-import { eq, or } from "drizzle-orm";
-import { db, usersTable, householdsTable } from "@workspace/db";
-import { requireAuth, type AuthenticatedRequest } from "../middlewares/requireAuth";
 import { GetMeResponse } from "@workspace/api-zod";
+import { db, householdsTable, importedHouseholdDataTable, usersTable } from "@workspace/db";
+import { eq, or } from "drizzle-orm";
+import { Router } from "express";
+import { requireAuth, type AuthenticatedRequest } from "../middlewares/requireAuth";
 
 const router = Router();
 
@@ -89,6 +89,24 @@ router.post("/auth/provision", async (req, res): Promise<void> => {
     }
   }
 
+  // If no live household match, search the staging import table
+  if (unpaidBalance === 0 && (unitNumber || email)) {
+    const stagingConditions = [];
+    if (unitNumber) stagingConditions.push(eq(importedHouseholdDataTable.unitNumber, unitNumber));
+    if (email) stagingConditions.push(eq(importedHouseholdDataTable.email, email.toLowerCase()));
+
+    const [stagingRow] = await db
+      .select()
+      .from(importedHouseholdDataTable)
+      .where(or(...stagingConditions))
+      .limit(1);
+
+    if (stagingRow) {
+      unpaidBalance = parseFloat(stagingRow.unpaidBalance);
+      matchedUnitNumber = stagingRow.unitNumber;
+    }
+  }
+
   const [newUser] = await db
     .insert(usersTable)
     .values({
@@ -101,11 +119,44 @@ router.post("/auth/provision", async (req, res): Promise<void> => {
     })
     .returning();
 
+  // Mark the staging record as matched and ensure a live household record exists
   if (matchedUnitNumber) {
     await db
-      .update(householdsTable)
-      .set({ userId: newUser.id })
-      .where(eq(householdsTable.unitNumber, matchedUnitNumber));
+      .update(importedHouseholdDataTable)
+      .set({ isMatched: true, matchedUserId: newUser.id })
+      .where(eq(importedHouseholdDataTable.unitNumber, matchedUnitNumber));
+
+    // Auto-create a live household record if one doesn't already exist
+    const [existingHousehold] = await db
+      .select({ id: householdsTable.id })
+      .from(householdsTable)
+      .where(eq(householdsTable.unitNumber, matchedUnitNumber))
+      .limit(1);
+
+    if (!existingHousehold) {
+      // Fetch the staging row to get all details
+      const [stagingRow] = await db
+        .select()
+        .from(importedHouseholdDataTable)
+        .where(eq(importedHouseholdDataTable.unitNumber, matchedUnitNumber))
+        .limit(1);
+
+      if (stagingRow) {
+        await db.insert(householdsTable).values({
+          unitNumber: stagingRow.unitNumber,
+          ownerName: stagingRow.ownerName,
+          email: stagingRow.email,
+          unpaidBalance: stagingRow.unpaidBalance,
+          overdueSince: stagingRow.overdueSince,
+          userId: newUser.id,
+        });
+      }
+    } else {
+      await db
+        .update(householdsTable)
+        .set({ userId: newUser.id })
+        .where(eq(householdsTable.unitNumber, matchedUnitNumber));
+    }
   }
 
   res.status(201).json({

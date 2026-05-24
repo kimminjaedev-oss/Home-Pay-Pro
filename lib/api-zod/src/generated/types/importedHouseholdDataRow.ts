@@ -6,22 +6,16 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface HouseholdDetail {
+export interface ImportedHouseholdDataRow {
   id: number;
   unitNumber: string;
   ownerName: string;
   email: string;
   unpaidBalance: number;
-  monthlyFee: number;
-  lateFee: number;
-  monthsOverdue: number;
-  interestRate: number;
   /** @nullable */
   overdueSince?: Date | null;
-  totalDue: number;
+  isMatched: boolean;
   /** @nullable */
-  userId?: number | null;
-  /** @nullable */
-  userName?: string | null;
-  createdAt: Date;
+  matchedUserId?: number | null;
+  importedAt: Date;
 }

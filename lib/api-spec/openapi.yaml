@@ -245,6 +245,55 @@ paths:
               schema:
                 type: string
 
+  /admin/upload-excel:
+    post:
+      operationId: uploadExcel
+      tags: [admin]
+      summary: Upload an Excel (.xlsx) file to populate the ImportedHouseholdData staging table
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: Upload result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportResult"
+        "400":
+          description: No file provided
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Unprocessable file
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/imported-data:
+    get:
+      operationId: getImportedData
+      tags: [admin]
+      summary: List all rows in the ImportedHouseholdData staging table
+      responses:
+        "200":
+          description: Staging data list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportedDataResponse"
+
   # ── Payments ──────────────────────────────────────────────────────────
   /payments/create-checkout:
     post:
@@ -550,6 +599,42 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Payment"
+
+    ImportedHouseholdDataRow:
+      type: object
+      required: [id, unitNumber, ownerName, email, unpaidBalance, isMatched, importedAt]
+      properties:
+        id:
+          type: integer
+        unitNumber:
+          type: string
+        ownerName:
+          type: string
+        email:
+          type: string
+        unpaidBalance:
+          type: number
+        overdueSince:
+          type: ["string", "null"]
+          format: date-time
+        isMatched:
+          type: boolean
+        matchedUserId:
+          type: ["integer", "null"]
+        importedAt:
+          type: string
+          format: date-time
+
+    ImportedDataResponse:
+      type: object
+      required: [data, total]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ImportedHouseholdDataRow"
+        total:
+          type: integer
 
     # ── Payment Schemas ─────────────────────────────────────────────────
     Payment:

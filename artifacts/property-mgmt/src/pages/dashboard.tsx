@@ -1,23 +1,41 @@
-import React, { useState } from "react";
 import { AppLayout } from "@/components/layout";
-import { useGetMyHousehold, useCreateCheckout, useGetPaymentHistory } from "@workspace/api-client-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { format } from "date-fns";
-import { CreditCard, DollarSign, History, AlertCircle, TrendingUp } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
+import { useQueryClient } from "@tanstack/react-query";
+import { useCreateCheckout, useGetMyHousehold, useGetPaymentHistory } from "@workspace/api-client-react";
+import { format } from "date-fns";
+import { AlertCircle, CreditCard, DollarSign, History, TrendingUp } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 export default function DashboardPage() {
+  const queryClient = useQueryClient();
   const { data: household, isLoading: isHouseholdLoading, error: householdError } = useGetMyHousehold({ query: { queryKey: ["/api/households/my"] } });
   const { data: historyRes, isLoading: isHistoryLoading } = useGetPaymentHistory({}, { query: { queryKey: ["/api/payments/history"] } });
   const checkoutMutation = useCreateCheckout();
   const { toast } = useToast();
+  const hasReconciledRef = useRef(false);
 
   const [paymentAmount, setPaymentAmount] = useState<string>("");
+
+  useEffect(() => {
+    if (hasReconciledRef.current) return;
+    hasReconciledRef.current = true;
+
+    void fetch("/api/payments/reconcile", { method: "POST" })
+      .then(async (r) => {
+        if (!r.ok) return;
+        await queryClient.invalidateQueries({ queryKey: ["/api/households/my"] });
+        await queryClient.invalidateQueries({ queryKey: ["/api/payments/history"] });
+      })
+      .catch(() => {
+        // ignore; regular payment history still loads
+      });
+  }, [queryClient]);
 
   const handleSetDefaultAmount = () => {
     if (household) {
@@ -96,7 +114,7 @@ export default function DashboardPage() {
         {/* Overdue Warning Banner */}
         {isOverdue && (
           <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl px-5 py-4">
-            <AlertCircle className="h-5 w-5 text-red-500 mt-0.5 flex-shrink-0" />
+            <AlertCircle className="h-5 w-5 text-red-500 mt-0.5 shrink-0" />
             <div>
               <p className="font-semibold text-red-800 text-sm">Overdue Balance</p>
               <p className="text-red-600 text-sm mt-0.5">
@@ -122,8 +140,7 @@ export default function DashboardPage() {
                 <div>
                   <div className="text-sm font-medium text-slate-500 mb-1">Total Due</div>
                   <div className={`text-4xl font-bold tracking-tight ${isOverdue ? "text-red-600" : "text-slate-900"}`}>
-                    ${household.totalDue.toFixed(2)}
-                  </div>
+                    ${household.totalDue ? household.totalDue.toFixed(2) : '0.00'}                  </div>
                 </div>
               </div>
 
@@ -131,7 +148,7 @@ export default function DashboardPage() {
               <div className="grid grid-cols-3 gap-3 mb-6">
                 <div className="bg-slate-50 px-4 py-3 rounded-lg border border-slate-100">
                   <div className="text-xs text-slate-500 mb-1">Unpaid Principal</div>
-                  <div className="font-semibold text-slate-900">${household.unpaidBalance.toFixed(2)}</div>
+                  <div className="font-semibold text-slate-900">${household.unpaidBalance ? household.unpaidBalance.toFixed(2) : '0.00'}</div>
                 </div>
                 <div className={`px-4 py-3 rounded-lg border ${isOverdue ? "bg-red-50 border-red-100" : "bg-slate-50 border-slate-100"}`}>
                   <div className={`text-xs mb-1 flex items-center gap-1 ${isOverdue ? "text-red-500" : "text-slate-500"}`}>
@@ -139,12 +156,12 @@ export default function DashboardPage() {
                     Late Fee {isOverdue ? `(${household.monthsOverdue}mo)` : ""}
                   </div>
                   <div className={`font-semibold ${isOverdue ? "text-red-700" : "text-slate-400"}`}>
-                    ${household.lateFee.toFixed(2)}
+                    ${household.lateFee ? household.lateFee.toFixed(2): '0.00'}
                   </div>
                 </div>
                 <div className="bg-slate-50 px-4 py-3 rounded-lg border border-slate-100">
                   <div className="text-xs text-slate-500 mb-1">Monthly Fee</div>
-                  <div className="font-semibold text-slate-900">${household.monthlyFee.toFixed(2)}</div>
+                  <div className="font-semibold text-slate-900">${household.monthlyFee ? household.monthlyFee.toFixed(2) : '0.00' }</div>
                 </div>
               </div>
 
@@ -167,7 +184,7 @@ export default function DashboardPage() {
                     <Button variant="outline" onClick={handleSetDefaultAmount} disabled={!hasBalance} data-testid="button-pay-full">
                       Pay Full
                     </Button>
-                    <Button onClick={handlePay} disabled={checkoutMutation.isPending || !paymentAmount} data-testid="button-submit-payment" className="min-w-[120px]">
+                    <Button onClick={handlePay} disabled={checkoutMutation.isPending || !paymentAmount} data-testid="button-submit-payment" className="min-w-30">
                       {checkoutMutation.isPending ? "Processing..." : (
                         <><CreditCard className="mr-2 h-4 w-4" /> Pay Now</>
                       )}
@@ -179,7 +196,7 @@ export default function DashboardPage() {
           </Card>
 
           {/* Household Details Card */}
-          <Card className="shadow-sm border-slate-200 bg-primary/5 border-primary/10">
+          <Card className="shadow-sm bg-primary/5 border-primary/10">
             <CardHeader>
               <CardTitle className="text-lg font-semibold text-primary/90">Household Details</CardTitle>
             </CardHeader>
@@ -194,7 +211,7 @@ export default function DashboardPage() {
               </div>
               <div className="flex justify-between pb-2 border-b border-primary/10">
                 <span className="text-slate-500">Email</span>
-                <span className="font-medium text-slate-900 truncate max-w-[180px]">{household.email}</span>
+                <span className="font-medium text-slate-900 truncate max-w-45">{household.email}</span>
               </div>
               {household.overdueSince && (
                 <div className="flex justify-between pb-2 border-b border-primary/10">
@@ -205,7 +222,7 @@ export default function DashboardPage() {
               {isOverdue && (
                 <div className="flex justify-between pb-2 border-b border-primary/10">
                   <span className="text-slate-500">Interest Rate</span>
-                  <span className="font-medium text-slate-900">{(household.interestRate * 100).toFixed(1)}% / month</span>
+                  <span className="font-medium text-slate-900">{household.interestRate ? (household.interestRate * 100).toFixed(1) : '0.0'}% / month</span>
                 </div>
               )}
               <div className="flex justify-between">
@@ -239,7 +256,7 @@ export default function DashboardPage() {
                 <Skeleton className="h-10 w-full" />
                 <Skeleton className="h-10 w-full" />
               </div>
-            ) : !historyRes || historyRes.payments.length === 0 ? (
+            ) : !historyRes?.payments?.length ? (
               <div className="text-center py-8 text-slate-500">
                 <History className="h-12 w-12 text-slate-200 mx-auto mb-3" />
                 <p>No past payments found.</p>
@@ -261,7 +278,7 @@ export default function DashboardPage() {
                         <TableCell className="font-medium text-slate-900">
                           {format(new Date(payment.createdAt), "MMM d, yyyy")}
                         </TableCell>
-                        <TableCell>${payment.amount.toFixed(2)}</TableCell>
+                        <TableCell>${payment.amount ? payment.amount.toFixed(2) : '0.00'}</TableCell>
                         <TableCell>
                           <Badge
                             variant={payment.status === "completed" ? "secondary" : payment.status === "failed" ? "destructive" : "outline"}
